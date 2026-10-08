@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplikasi Kasir Warung</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .receipt { max-width: 320px; }
+        .menu-item:hover { transform: translateY(-5px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
+        .category-btn.active { background-color: #1D4ED8; color: white; }
+        .loader {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        @media print {
+            body * { visibility: hidden; }
+            #receipt-modal, #receipt-modal * { visibility: visible; }
+            #receipt-modal { position: absolute; left: 0; top: 0; width: 100%; height: 100%; box-shadow: none; background-color: white; }
+            
+            /* Perbaikan final untuk tombol cetak ada di sini */
+            #receipt-modal .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div id="login-page" class="flex items-center justify-center min-h-screen">
+        <div class="w-full max-w-md p-8 space-y-6 bg-white rounded-xl shadow-lg">
+            <h2 class="text-3xl font-bold text-center text-gray-900">Login Kasir</h2>
+            <form id="login-form" class="space-y-6">
+                <div>
+                    <label for="username" class="text-sm font-medium text-gray-700">Username</label>
+                    <input id="username" name="username" type="text" required class="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" value="admin">
+                </div>
+                <div>
+                    <label for="password" class="text-sm font-medium text-gray-700">Password</label>
+                    <input id="password" name="password" type="password" required class="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" value="admin123">
+                </div>
+                <button type="submit" id="login-btn" class="w-full flex justify-center items-center py-2 px-4 text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 font-semibold">
+                    <span class="btn-text">Masuk</span>
+                    <div class="loader hidden ml-2"></div>
+                </button>
+                <p id="login-error" class="text-sm text-red-600 text-center"></p>
+            </form>
+        </div>
+    </div>
+
+    <div id="cashier-page" class="hidden">
+        <header class="bg-white shadow-md p-4 flex justify-between items-center no-print">
+            <h1 class="text-2xl font-bold text-blue-700">Warung Digital</h1>
+            <div>
+                <span id="user-info" class="text-gray-600 font-medium"></span>
+                <a id="admin-link" href="admin.html" class="hidden ml-4 py-2 px-4 text-sm text-white bg-purple-600 rounded-md hover:bg-purple-700 font-semibold">Dasbor Admin</a>
+                <button id="logout-btn" class="ml-4 py-2 px-4 text-sm text-white bg-red-500 rounded-md hover:bg-red-600 font-semibold">Logout</button>
+            </div>
+        </header>
+        <main class="flex flex-col lg:flex-row p-4 gap-6 no-print">
+            <div class="w-full lg:w-2/3">
+                <h2 class="text-xl font-semibold mb-4">Daftar Menu</h2>
+                <div class="bg-white p-4 rounded-lg shadow-sm mb-4">
+                    <input type="text" id="search-bar" placeholder="Cari nama menu..." class="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <div id="category-filters" class="flex flex-wrap gap-2 mt-4"></div>
+                </div>
+                <div id="menu-list" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"></div>
+            </div>
+            <div class="w-full lg:w-1/3 bg-white p-6 rounded-xl shadow-lg">
+                <h2 class="text-xl font-bold mb-4 border-b pb-2">Keranjang</h2>
+                <div id="cart-items" class="space-y-3 mb-4 max-h-64 overflow-y-auto">
+                    <p id="cart-empty" class="text-gray-500">Keranjang masih kosong.</p>
+                </div>
+                <div class="border-t pt-4 space-y-2 text-sm">
+                    <div class="flex justify-between font-medium"><span>Subtotal</span><span id="cart-subtotal">Rp 0</span></div>
+                    <div class="flex justify-between text-gray-600"><span>PPN (10%)</span><span id="cart-tax">Rp 0</span></div>
+                    <div class="flex justify-between font-bold text-lg text-blue-700"><span>Total</span><span id="cart-total">Rp 0</span></div>
+                </div>
+                <button id="checkout-btn" class="w-full mt-6 py-3 px-4 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 disabled:bg-gray-400" disabled>Bayar</button>
+            </div>
+        </main>
+    </div>
+
+    <div id="payment-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center hidden no-print">
+        <div class="bg-white rounded-lg p-8 w-full max-w-sm">
+            <h3 class="text-2xl font-bold mb-6 text-center">Pembayaran</h3>
+            <div class="space-y-4">
+                <div class="flex justify-between items-center text-lg"><span class="font-semibold">Total Belanja:</span><span id="modal-total" class="font-bold text-blue-700">Rp 0</span></div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Metode Pembayaran:</label>
+                    <div class="flex gap-4" id="payment-method-options">
+                        <label class="flex items-center gap-2 border rounded-md p-2 flex-1 cursor-pointer has-[:checked]:bg-blue-50 has-[:checked]:border-blue-500">
+                            <input type="radio" name="payment-method" value="Tunai" class="form-radio" checked>
+                            <span>Tunai</span>
+                        </label>
+                        <label class="flex items-center gap-2 border rounded-md p-2 flex-1 cursor-pointer has-[:checked]:bg-blue-50 has-[:checked]:border-blue-500">
+                            <input type="radio" name="payment-method" value="QRIS" class="form-radio">
+                            <span>QRIS</span>
+                        </label>
+                        <label class="flex items-center gap-2 border rounded-md p-2 flex-1 cursor-pointer has-[:checked]:bg-blue-50 has-[:checked]:border-blue-500">
+                            <input type="radio" name="payment-method" value="Debit" class="form-radio">
+                            <span>Debit</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div><label for="amount-paid" class="block text-sm font-medium text-gray-700">Jumlah Bayar (Rp):</label><input type="number" id="amount-paid" class="w-full mt-1 px-4 py-2 text-lg border rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"></div>
+                <div class="flex justify-between items-center text-lg"><span class="font-medium">Kembalian:</span><span id="change" class="font-semibold text-green-600">Rp 0</span></div>
+            </div>
+            <div class="mt-8 flex gap-4">
+                <button id="cancel-payment-btn" class="w-full py-2 px-4 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 font-semibold">Batal</button>
+                <button id="confirm-payment-btn" class="w-full flex justify-center items-center py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 font-semibold" disabled><span class="btn-text">Konfirmasi</span><div class="loader hidden ml-2"></div></button>
+            </div>
+        </div>
+    </div>
+
+    <div id="receipt-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center hidden">
+        <div class="bg-white rounded-lg p-6 receipt text-sm">
+            <div class="text-center mb-4">
+                <h4 class="font-bold text-lg">Warung Digital</h4>
+                <p>Jl. Merdeka No. 123, Batam</p>
+                <p id="receipt-date" class="mt-2 text-xs"></p>
+                <p id="receipt-id" class="text-xs"></p>
+            </div>
+            <div class="border-t border-b border-dashed py-2" id="receipt-items"></div>
+            <div class="mt-2 pt-2 border-t space-y-1">
+                <div class="flex justify-between"><span>Subtotal:</span><span id="receipt-subtotal"></span></div>
+                <div class="flex justify-between"><span>PPN 10%:</span><span id="receipt-tax"></span></div>
+                <div class="flex justify-between font-bold"><span>Total:</span><span id="receipt-total"></span></div>
+                <div class="flex justify-between"><span>Bayar Via:</span><span id="receipt-method"></span></div>
+                <div class="flex justify-between"><span>Tunai:</span><span id="receipt-paid"></span></div>
+                <div class="flex justify-between"><span>Kembali:</span><span id="receipt-change"></span></div>
+            </div>
+            <p class="text-center mt-4 text-xs">Terima kasih telah berbelanja!</p>
+            
+            <div class="mt-6 flex gap-2 no-print">
+                <button id="print-receipt-btn" class="w-full py-2 px-4 bg-gray-600 text-white rounded-md hover:bg-gray-700 font-semibold">Cetak Struk</button>
+                <button id="close-receipt-btn" class="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-semibold">Transaksi Baru</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const loginPage = document.getElementById('login-page');
+            const cashierPage = document.getElementById('cashier-page');
+            const loginForm = document.getElementById('login-form');
+            const loginBtn = document.getElementById('login-btn');
+            const loginError = document.getElementById('login-error');
+            const userInfo = document.getElementById('user-info');
+            const logoutBtn = document.getElementById('logout-btn');
+            const adminLink = document.getElementById('admin-link');
+            const menuList = document.getElementById('menu-list');
+            const cartItems = document.getElementById('cart-items');
+            const cartEmpty = document.getElementById('cart-empty');
+            const cartSubtotalEl = document.getElementById('cart-subtotal');
+            const cartTaxEl = document.getElementById('cart-tax');
+            const cartTotalEl = document.getElementById('cart-total');
+            const checkoutBtn = document.getElementById('checkout-btn');
+            const searchBar = document.getElementById('search-bar');
+            const categoryFilters = document.getElementById('category-filters');
+            const paymentModal = document.getElementById('payment-modal');
+            const modalTotalEl = document.getElementById('modal-total');
+            const amountPaidInput = document.getElementById('amount-paid');
+            const changeEl = document.getElementById('change');
+            const cancelPaymentBtn = document.getElementById('cancel-payment-btn');
+            const confirmPaymentBtn = document.getElementById('confirm-payment-btn');
+            const receiptModal = document.getElementById('receipt-modal');
+            const closeReceiptBtn = document.getElementById('close-receipt-btn');
+            const printReceiptBtn = document.getElementById('print-receipt-btn');
+            let cart = [];
+            let allMenus = [];
+            let activeCategory = 'all';
+            const API_URL = 'http://localhost:5000/api';
+
+            const toggleLoading = (button, isLoading) => {
+                const text = button.querySelector('.btn-text');
+                const loader = button.querySelector('.loader');
+                if(button) {
+                    button.disabled = isLoading;
+                    if(text) text.style.display = isLoading ? 'none' : 'inline';
+                    if(loader) loader.style.display = isLoading ? 'block' : 'none';
+                }
+            };
+            const formatCurrency = (amount) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
+
+            const token = localStorage.getItem('token');
+            if (token) {
+                try {
+                    const user = JSON.parse(localStorage.getItem('user'));
+                    if (user) {
+                        showCashierPage(user);
+                    }
+                } catch (e) {
+                    localStorage.clear();
+                }
+            }
+
+            loginForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                loginError.textContent = '';
+                toggleLoading(loginBtn, true);
+                const username = e.target.username.value;
+                const password = e.target.password.value;
+                try {
+                    const response = await fetch(`${API_URL}/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password }),
+                    });
+                    if (!response.ok) {
+                        const message = await response.text();
+                        throw new Error(message || 'Login gagal!');
+                    }
+                    const { token, user } = await response.json();
+                    localStorage.setItem('token', token);
+                    localStorage.setItem('user', JSON.stringify(user));
+                    
+                    if (user.role === 'admin') {
+                        window.location.href = window.location.href.replace(/index\.html$|$/, 'admin.html');
+                    } else {
+                        showCashierPage(user);
+                    }
+                } catch (error) {
+                    loginError.textContent = error.message;
+                } finally {
+                    toggleLoading(loginBtn, false);
+                }
+            });
+
+            logoutBtn.addEventListener('click', () => {
+                localStorage.clear();
+                window.location.reload();
+            });
+
+            function showCashierPage(user) {
+                loginPage.style.display = 'none';
+                cashierPage.style.display = 'block';
+                userInfo.textContent = `Kasir: ${user.username}`;
+                 if (user.role === 'admin') {
+                    adminLink.classList.remove('hidden');
+                }
+                fetchCategories();
+                fetchMenu();
+            }
+            
+            async function fetchCategories() {
+                try {
+                    const response = await fetch(`${API_URL}/kategori`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } });
+                    if (!response.ok) throw new Error('Gagal memuat kategori');
+                    const categories = await response.json();
+                    renderCategoryFilters(categories);
+                } catch (error) { console.error(error); }
+            }
+            
+            function renderCategoryFilters(categories) {
+                categoryFilters.innerHTML = '';
+                const allBtn = document.createElement('button');
+                allBtn.textContent = 'Semua';
+                allBtn.className = 'category-btn px-4 py-2 rounded-md bg-gray-200 hover:bg-blue-500 hover:text-white transition-colors active';
+                allBtn.dataset.categoryId = 'all';
+                allBtn.addEventListener('click', () => handleCategoryFilter('all'));
+                categoryFilters.appendChild(allBtn);
+                categories.forEach(cat => {
+                    const btn = document.createElement('button');
+                    btn.textContent = cat.nama_kategori;
+                    btn.className = 'category-btn px-4 py-2 rounded-md bg-gray-200 hover:bg-blue-500 hover:text-white transition-colors';
+                    btn.dataset.categoryId = cat.id_kategori;
+                    btn.addEventListener('click', () => handleCategoryFilter(cat.id_kategori));
+                    categoryFilters.appendChild(btn);
+                });
+            }
+            
+            function handleCategoryFilter(categoryId) {
+                activeCategory = categoryId;
+                document.querySelectorAll('.category-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.categoryId == categoryId));
+                fetchMenu(searchBar.value, activeCategory);
+            }
+
+            async function fetchMenu(searchTerm = '', categoryId = 'all') {
+                try {
+                    let url = `${API_URL}/menu?`;
+                    if(searchTerm) url += `q=${searchTerm}&`;
+                    if(categoryId !== 'all') url += `kategori=${categoryId}`;
+                    const response = await fetch(url, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } });
+                    if (response.status === 403 || response.status === 401) throw new Error('Sesi Anda telah berakhir, silakan login kembali.');
+                    if (!response.ok) throw new Error('Gagal memuat menu');
+                    allMenus = await response.json();
+                    renderMenu();
+                } catch (error) {
+                    alert(error.message);
+                    logoutBtn.click();
+                }
+            }
+
+            function renderMenu() {
+                menuList.innerHTML = '';
+                if(allMenus.length === 0) {
+                    menuList.innerHTML = `<p class="col-span-full text-center text-gray-500">Menu tidak ditemukan.</p>`;
+                    return;
+                }
+                allMenus.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'menu-item bg-white rounded-lg shadow-sm p-4 flex flex-col cursor-pointer transition-all duration-200';
+                    div.innerHTML = `<img src="${item.gambar || 'https://placehold.co/300x200/e2e8f0/64748b?text=Gambar'}" alt="${item.nama_menu}" class="w-full h-32 object-cover rounded-md mb-3"><h3 class="font-semibold text-base flex-grow">${item.nama_menu}</h3><p class="text-sm text-gray-500">${item.nama_kategori || 'Lainnya'}</p><p class="font-bold text-blue-600 mt-2">${formatCurrency(item.harga)}</p>`;
+                    div.addEventListener('click', () => addToCart(item));
+                    menuList.appendChild(div);
+                });
+            }
+
+            function addToCart(item) {
+                const existingItem = cart.find(cartItem => cartItem.id_menu === item.id_menu);
+                if (existingItem) {
+                    if(existingItem.quantity < item.stok) existingItem.quantity++;
+                    else alert('Stok tidak mencukupi!');
+                } else {
+                    if (item.stok > 0) cart.push({ ...item, quantity: 1 });
+                    else alert('Stok habis!');
+                }
+                updateCart();
+            }
+
+            function updateCart() {
+                cartItems.innerHTML = '';
+                if (cart.length === 0) {
+                    cartItems.appendChild(cartEmpty);
+                    cartEmpty.style.display = 'block';
+                } else {
+                    cartEmpty.style.display = 'none';
+                    cart.forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = 'flex justify-between items-center';
+                        div.innerHTML = `<div><p class="font-semibold">${item.nama_menu}</p><p class="text-xs text-gray-500">${formatCurrency(item.harga)}</p></div><div class="flex items-center gap-2"><button class="decrease-qty w-6 h-6 bg-gray-200 rounded-full font-bold">-</button><span>${item.quantity}</span><button class="increase-qty w-6 h-6 bg-gray-200 rounded-full font-bold">+</button><button class="remove-item text-red-500 hover:text-red-700 font-bold ml-2">X</button></div>`;
+                        div.querySelector('.increase-qty').addEventListener('click', () => { if(item.quantity < item.stok) { item.quantity++; updateCart(); } else { alert('Stok tidak mencukupi!'); } });
+                        div.querySelector('.decrease-qty').addEventListener('click', () => { item.quantity--; if (item.quantity === 0) { cart = cart.filter(ci => ci.id_menu !== item.id_menu); } updateCart(); });
+                        div.querySelector('.remove-item').addEventListener('click', () => { cart = cart.filter(ci => ci.id_menu !== item.id_menu); updateCart(); });
+                        cartItems.appendChild(div);
+                    });
+                }
+                const subtotal = cart.reduce((sum, item) => sum + item.harga * item.quantity, 0);
+                const tax = subtotal * 0.10;
+                const total = subtotal + tax;
+                cartSubtotalEl.textContent = formatCurrency(subtotal);
+                cartTaxEl.textContent = formatCurrency(tax);
+                cartTotalEl.textContent = formatCurrency(total);
+                checkoutBtn.disabled = cart.length === 0;
+            }
+
+            searchBar.addEventListener('input', (e) => fetchMenu(e.target.value, activeCategory));
+            checkoutBtn.addEventListener('click', () => {
+                const total = cart.reduce((sum, item) => sum + item.harga * item.quantity, 0) * 1.10;
+                modalTotalEl.textContent = formatCurrency(total);
+                paymentModal.classList.remove('hidden');
+                amountPaidInput.focus();
+            });
+            cancelPaymentBtn.addEventListener('click', () => {
+                paymentModal.classList.add('hidden');
+                amountPaidInput.value = '';
+                changeEl.textContent = formatCurrency(0);
+                confirmPaymentBtn.disabled = true;
+            });
+            amountPaidInput.addEventListener('input', () => {
+                const total = cart.reduce((sum, item) => sum + item.harga * item.quantity, 0) * 1.10;
+                const paid = parseFloat(amountPaidInput.value) || 0;
+                const change = paid - total;
+                if (change >= 0) {
+                    changeEl.textContent = formatCurrency(change);
+                    confirmPaymentBtn.disabled = false;
+                } else {
+                    changeEl.textContent = 'Uang Kurang';
+                    confirmPaymentBtn.disabled = true;
+                }
+            });
+            
+            confirmPaymentBtn.addEventListener('click', async () => {
+                toggleLoading(confirmPaymentBtn, true);
+                const total = cart.reduce((sum, item) => sum + (item.harga * item.quantity), 0) * 1.10;
+                const amountPaid = parseFloat(amountPaidInput.value);
+                
+                const selectedPaymentMethod = document.querySelector('input[name="payment-method"]:checked').value;
+
+                const transactionData = { 
+                    items: cart, 
+                    total: total, 
+                    amountPaid: amountPaid, 
+                    change: amountPaid - total,
+                    metode_pembayaran: selectedPaymentMethod
+                };
+                
+                try {
+                    const response = await fetch(`${API_URL}/transaksi`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                        body: JSON.stringify(transactionData),
+                    });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.message || 'Gagal menyimpan transaksi');
+                    showReceipt(transactionData, result.transactionId);
+                    paymentModal.classList.add('hidden');
+                } catch (error) {
+                    alert(`Error: ${error.message}`);
+                    if (error.message.toLowerCase().includes('stok')) {
+                        fetchMenu();
+                        cart = [];
+                        updateCart();
+                        paymentModal.classList.add('hidden');
+                    }
+                } finally {
+                    toggleLoading(confirmPaymentBtn, false);
+                }
+            });
+
+            function showReceipt(data, transactionId) {
+                const now = new Date();
+                document.getElementById('receipt-date').textContent = now.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+                document.getElementById('receipt-id').textContent = `ID Transaksi: #${transactionId}`;
+                const itemsEl = document.getElementById('receipt-items');
+                itemsEl.innerHTML = '';
+                data.items.forEach(item => {
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'flex justify-between';
+                    itemDiv.innerHTML = `<span>${item.quantity}x ${item.nama_menu}</span> <span>${formatCurrency(item.harga * item.quantity)}</span>`;
+                    itemsEl.appendChild(itemDiv);
+                });
+                const subtotal = data.total / 1.1;
+                document.getElementById('receipt-subtotal').textContent = formatCurrency(subtotal);
+                document.getElementById('receipt-tax').textContent = formatCurrency(data.total - subtotal);
+                document.getElementById('receipt-total').textContent = formatCurrency(data.total);
+                document.getElementById('receipt-paid').textContent = formatCurrency(data.amountPaid);
+                document.getElementById('receipt-change').textContent = formatCurrency(data.change);
+                document.getElementById('receipt-method').textContent = data.metode_pembayaran;
+                
+                receiptModal.classList.remove('hidden');
+            }
+            printReceiptBtn.addEventListener('click', () => window.print());
+            closeReceiptBtn.addEventListener('click', () => {
+                receiptModal.classList.add('hidden');
+                cart = [];
+                updateCart();
+                amountPaidInput.value = '';
+                changeEl.textContent = formatCurrency(0);
+                confirmPaymentBtn.disabled = true;
+                fetchMenu(searchBar.value, activeCategory);
+            });
+        });
+    </script>
+</body>
+</html>
